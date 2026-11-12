@@ -1,0 +1,8 @@
+# Build artifacts
+*.o
+*.so
+src.zip
+
+# Test outputs
+tests/out/
+tests/snippets/*.out
