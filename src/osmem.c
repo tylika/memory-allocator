@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
+#include <stdint.h>
+#include <string.h>
+#include <unistd.h>
 #include "osmem.h"
 #include "helpers.h"
 
@@ -46,8 +49,21 @@ void os_free(void *ptr)
 
 void *os_calloc(size_t nmemb, size_t size)
 {
-	/* TODO: Implement os_calloc */
-	return NULL;
+	size_t total;
+	void *ptr;
+
+	if (nmemb == 0 || size == 0)
+		return NULL;
+
+	/* Refuse sizes that overflow size_t */
+	if (nmemb > SIZE_MAX / size)
+		return NULL;
+
+	total = nmemb * size;
+	ptr = alloc_block(total, (size_t)getpagesize());
+	memset(ptr, 0, total);
+
+	return ptr;
 }
 
 void *os_realloc(void *ptr, size_t size)
