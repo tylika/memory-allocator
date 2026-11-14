@@ -66,8 +66,64 @@ void *os_calloc(size_t nmemb, size_t size)
 	return ptr;
 }
 
+/* Try to resize a heap block without moving it. Returns 1 on success. */
+static int resize_in_place(struct block_meta *block, size_t size)
+{
+	/* Shrinking: keep the block and give the rest back as a free block */
+	if (size <= block->size) {
+		split_block(block, size);
+		return 1;
+	}
+
+	/* Absorb the following free blocks one at a time until it fits */
+	while (block->next && block->next->status == STATUS_FREE && block->size < size)
+		merge_with_next(block);
+
+	if (block->size >= size) {
+		split_block(block, size);
+		return 1;
+	}
+
+	/* The last block on the heap can simply grow with brk() */
+	if (!block->next) {
+		grow_heap(size - block->size);
+		block->size = size;
+		return 1;
+	}
+
+	return 0;
+}
+
 void *os_realloc(void *ptr, size_t size)
 {
-	/* TODO: Implement os_realloc */
-	return NULL;
+	struct block_meta *block;
+	void *new_ptr;
+
+	if (!ptr)
+		return os_malloc(size);
+
+	if (size == 0) {
+		os_free(ptr);
+		return NULL;
+	}
+
+	block = PAYLOAD_BLOCK(ptr);
+
+	/* Reallocating a free block is undefined behaviour, refuse it */
+	if (block->status == STATUS_FREE)
+		return NULL;
+
+	size = ALIGN(size);
+
+	/* Heap blocks that stay below the mmap threshold are resized in place */
+	if (block->status == STATUS_ALLOC && META_SIZE + size < MMAP_THRESHOLD &&
+	    resize_in_place(block, size))
+		return ptr;
+
+	/* Otherwise move the data to a new block */
+	new_ptr = os_malloc(size);
+	memcpy(new_ptr, ptr, block->size < size ? block->size : size);
+	os_free(ptr);
+
+	return new_ptr;
 }
